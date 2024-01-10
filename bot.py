@@ -12,13 +12,14 @@ bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
-
+file_chek = False
 class AddExcel(StatesGroup):
     WaitingForDocument = State()
 
 
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
+    global file_chek
     await message.answer(
         "Привет! Я бот созданный для выдачи информации по группе студенте\nДля начала введите /addExcel 'номер группы'. Например /addExcel ПИ101")
 
@@ -41,11 +42,20 @@ async def process_document(message: types.Message, state: FSMContext):
     file_info = await bot.get_file(document_id)
     fi = file_info.file_path
     try:
+        columns_to_check = ['Оценка','Сокращенная оценка','Период','Год','Семестр/Триместр','Курс','Часть года','Уровень контроля','Дисциплина','Личный номер студента','Группа','Факультет','Программа','Форма обучения','Тип финансирования']
+
         await message.reply("Обработка...")
         df_raw = pd.read_excel(f'https://api.telegram.org/file/bot{API_TOKEN}/{fi}')
         df = pd.DataFrame(df_raw)
+        missing_columns = set(columns_to_check) - set(df.columns)
 
-        pi101_row = df[df['Группа'] == group_id]
+        if missing_columns:
+            await message.reply(f"Отсутсвуют столбцы:{','.join(missing_columns)}")
+            await state.finish()
+        else:
+            await message.reply("Все необходимые столбцы присутсвуют")
+            file_chek =True
+        if file_chek == True : pi101_row = df[df['Группа'] == group_id]
         unique_student_row = pi101_row['Личный номер студента'].unique()
         unique_student_row_str = [str(number) for number in unique_student_row]
         unique_student_row_str = ', '.join(unique_student_row_str)
@@ -59,7 +69,7 @@ async def process_document(message: types.Message, state: FSMContext):
         await message.reply(
             f'В исходном датасете содержалось {len(df)} оценок, из них {len(pi101_row)}\n оценок относятся к группе ПИ101\n В датасете находятся оценки {len(unique_student_row)} студентов со следующими личными номерами: {unique_student_row_str} \nИспользуемые формы контроля: {type_control_str}\nДанные представлены по следующим учебным годам: {year_control_row_str}')
     except Exception as e:
-        await message.reply(f"read error: {e}")
+        await message.reply(f"Ошибка в чтении: {e}")
     await state.finish()
 
 
